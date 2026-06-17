@@ -34,6 +34,12 @@ export type ApiClient = ApiBaseEntity & {
   PASTA: string
 }
 
+export type ApiClientFile = ApiBaseEntity & {
+  CLIENTE_ID: string
+  NOME: string
+  FORMATO: string
+}
+
 export type ApiSupplier = ApiBaseEntity & {
   NOME: string
   CATEGORIA: string
@@ -60,6 +66,7 @@ export type ApiProductionFile = ApiBaseEntity & {
   ORDER_ID: string
   NOME: string
   FORMATO: string
+  ITEM_ID: string | null
 }
 
 export type ApiStageAllocation = ApiBaseEntity & {

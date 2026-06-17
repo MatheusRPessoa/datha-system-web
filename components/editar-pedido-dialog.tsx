@@ -40,14 +40,28 @@ export function EditarPedidoDialog({
   const [prioridade, setPrioridade] = useState<"baixa" | "media" | "alta">(pedido.prioridade)
   const [prazo, setPrazo] = useState(pedido.prazo)
   const [valor, setValor] = useState(String(pedido.valor))
-  const [item, setItem] = useState(pedido.itens[0]?.descricao ?? "")
-  const [qtd, setQtd] = useState(String(pedido.itens[0]?.quantidade ?? 1))
+  const [itens, setItens] = useState(
+    pedido.itens.map((i) => ({ descricao: i.descricao, quantidade: String(i.quantidade), unidade: i.unidade })),
+  )
   const [observacoes, setObservacoes] = useState(pedido.observacoes ?? "")
   const [arquivos, setArquivos] = useState(pedido.arquivosProducao)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const canSubmit = numeroPedido && clienteId && responsavel && item
+  const canSubmit = numeroPedido && clienteId && responsavel && itens.some((i) => i.descricao.trim())
+
+  function addItem() {
+    setItens((prev) => [...prev, { descricao: "", quantidade: "1", unidade: "un" }])
+  }
+
+  function updateItem(index: number, field: "descricao" | "quantidade" | "unidade", value: string) {
+    const sanitized = field === "quantidade" ? value.replace(/-/g, "") : value
+    setItens((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: sanitized } : it)))
+  }
+
+  function removeItem(index: number) {
+    setItens((prev) => prev.filter((_, i) => i !== index))
+  }
 
   function addArquivo() {
     setArquivos((prev) => [...prev, { nome: "", formato: "" }])
@@ -70,7 +84,7 @@ export function EditarPedidoDialog({
     try {
       await updateOrder(pedido.id, {
         numero,
-        titulo: item,
+        titulo: itens[0]?.descricao ?? "",
         clienteId,
         cliente: cliente?.nome ?? "",
         stage: pedido.stage,
@@ -79,13 +93,9 @@ export function EditarPedidoDialog({
         prazo,
         valor: Number(valor) || 0,
         observacoes: observacoes || undefined,
-        itens: [
-          {
-            descricao: item,
-            quantidade: Number(qtd) || 1,
-            unidade: "un",
-          },
-        ],
+        itens: itens
+          .filter((i) => i.descricao.trim())
+          .map((i) => ({ descricao: i.descricao, quantidade: Number(i.quantidade) || 1, unidade: i.unidade || "un" })),
         arquivosProducao: arquivos.filter((a) => a.nome.trim()),
         statusCompraMaterial: pedido.statusCompraMaterial,
         compraMaterial: pedido.compraMaterial,
@@ -189,19 +199,43 @@ export function EditarPedidoDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2 grid gap-2">
-              <Label htmlFor="item">Produto</Label>
-              <Input
-                id="item"
-                value={item}
-                onChange={(e) => setItem(e.target.value)}
-                placeholder="Ex.: Camisa 100% Algodão - Personalização frente | #229"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="qtd">Qtd.</Label>
-              <Input id="qtd" type="number" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="0" />
+          <div className="grid gap-2">
+            <Label>Produtos</Label>
+            <div className="flex flex-col gap-2">
+              {itens.map((it, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input
+                    value={it.descricao}
+                    onChange={(e) => updateItem(i, "descricao", e.target.value)}
+                    placeholder="Ex.: Camisa 100% Algodão - Personalização frente"
+                    className="flex-1"
+                  />
+                  <Input
+                    type="number"
+                    min="1"
+                    value={it.quantidade}
+                    onChange={(e) => updateItem(i, "quantidade", e.target.value)}
+                    placeholder="Qtd."
+                    className="w-20 text-right"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => removeItem(i)}
+                    aria-label="Remover produto"
+                  >
+                    <X />
+                  </Button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addItem}
+                className="self-start text-xs font-medium text-primary hover:underline"
+              >
+                + Adicionar produto
+              </button>
             </div>
           </div>
 

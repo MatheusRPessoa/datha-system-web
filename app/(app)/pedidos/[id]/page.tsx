@@ -5,9 +5,11 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
   ArrowLeft,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Copy,
   FolderOpen,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,6 +35,7 @@ import {
   type MaterialStatus,
 } from "@/lib/data"
 import { cn } from "@/lib/utils"
+import { ApiError } from "@/lib/api"
 
 export default function PedidoDetalhePage({
   params,
@@ -43,6 +46,8 @@ export default function PedidoDetalhePage({
   const { orders, clients, loading, moveOrder, alocarEtapa, finalizarEtapa, atualizarCompraMaterial, refreshOrder } =
     useStore()
   const [compraDialogOpen, setCompraDialogOpen] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     refreshOrder(id).catch(() => {})
@@ -53,12 +58,33 @@ export default function PedidoDetalhePage({
     if (loading) return null
     return notFound()
   }
+  const arquivosPorItem = pedido.itens.map((item) => ({
+    item,
+    arquivos: pedido.arquivosProducao.filter((a) => a.itemId === item.id),
+  }))
+  const arquivosGerais = pedido.arquivosProducao.filter((a) => !a.itemId)
 
   const cliente = clients.find((c) => c.id === pedido.clienteId)
 
   const prev = prevStage(pedido.stage)
   const next = nextStage(pedido.stage)
   const alocAtual = pedido.alocacoes.find((a) => a.stage === pedido.stage)
+
+  async function handleCopiarPasta() {
+    if (!cliente) return
+    await navigator.clipboard.writeText(cliente.pasta)
+    setCopiado(true)
+    setTimeout(() => setCopiado(false), 1500)
+  }
+
+  async function handleAction(fn: () => Promise<void>) {
+    setActionError(null)
+    try {
+      await fn()
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Erro ao executar a ação")
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -176,7 +202,15 @@ export default function PedidoDetalhePage({
           {cliente && (
             <span className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2">
               <FolderOpen className="h-4 w-4 shrink-0" />
-              <span className="truncate font-mono text-xs">{cliente.pasta}</span>
+              <span className="truncate font-mono text-xs flex-1">{cliente.pasta}</span>
+              <button
+                type="button"
+                onClick={handleCopiarPasta}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label="Copiar caminho da pasta"
+              >
+                {copiado ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
             </span>
           )}
           {pedido.arquivosProducao.length > 0 ? (
@@ -184,21 +218,49 @@ export default function PedidoDetalhePage({
               <p className="text-xs text-muted-foreground">
                 Enviados pelo cliente para montagem. Após preparar a arte para impressão, salvar na pasta acima.
               </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {pedido.arquivosProducao.map((a) => (
-                  <div
-                    key={a.id ?? a.nome}
-                    className="flex items-center gap-2 rounded-lg border border-border px-3 py-2"
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-secondary text-[10px] font-semibold text-muted-foreground">
-                      {a.formato}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-                      {a.nome}
-                    </span>
+              {arquivosPorItem.map(
+                ({ item, arquivos }) =>
+                  arquivos.length > 0 && (
+                    <div key={item.id} className="flex flex-col gap-2">
+                      <p className="text-xs font-semibold text-muted-foreground">{item.descricao}</p>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {arquivos.map((a) => (
+                          <div
+                            key={a.id ?? a.nome}
+                            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2"
+                          >
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-secondary text-[10px] font-semibold text-muted-foreground">
+                              {a.formato}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+                              {a.nome}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ),
+              )}
+              {arquivosGerais.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground">Arquivos gerais do pedido</p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {arquivosGerais.map((a) => (
+                      <div
+                        key={a.id ?? a.nome}
+                        className="flex items-center gap-2 rounded-lg border border-border px-3 py-2"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-secondary text-[10px] font-semibold text-muted-foreground">
+                          {a.formato}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+                          {a.nome}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </>
           ) : (
             <p className="text-sm text-muted-foreground">Nenhum arquivo de produção cadastrado para este pedido.</p>
@@ -262,7 +324,7 @@ export default function PedidoDetalhePage({
             variant="outline"
             size="sm"
             disabled={!prev}
-            onClick={() => prev && moveOrder(pedido.id, prev).catch(() => {})}
+            onClick={() => prev && handleAction(() => moveOrder(pedido.id, prev))}
           >
             <ChevronLeft />
             Etapa anterior
@@ -271,7 +333,7 @@ export default function PedidoDetalhePage({
           {!alocAtual?.alocadoPor && (
             <Button
               size="sm"
-              onClick={() => alocarEtapa(pedido.id, pedido.stage).catch(() => {})}
+              onClick={() => handleAction(() => alocarEtapa(pedido.id, pedido.stage))}
             >
               Alocar {stageMeta(pedido.stage).label}
             </Button>
@@ -280,7 +342,7 @@ export default function PedidoDetalhePage({
           {alocAtual?.alocadoPor && !alocAtual?.finalizadoPor && (
             <Button
               size="sm"
-              onClick={() => finalizarEtapa(pedido.id, pedido.stage).catch(() => {})}
+              onClick={() => handleAction(() => finalizarEtapa(pedido.id, pedido.stage))}
             >
               Finalizar {stageMeta(pedido.stage).label}
             </Button>
@@ -290,11 +352,12 @@ export default function PedidoDetalhePage({
             variant="outline"
             size="sm"
             disabled={!next}
-            onClick={() => next && moveOrder(pedido.id, next).catch(() => {})}
+            onClick={() => next &&  handleAction(() => moveOrder(pedido.id, next).catch(() => {}))}
           >
             Próxima etapa
             <ChevronRight />
           </Button>
+          {actionError && <p className="w-full text-sm text-destructive">{actionError}</p>}
         </CardContent>
       </Card>
 

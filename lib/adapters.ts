@@ -3,6 +3,7 @@
 import type {
   ApiAuthUser,
   ApiClient,
+  ApiClientFile,
   ApiOrder,
   ApiOrderItem,
   ApiOrderLog,
@@ -12,6 +13,7 @@ import type {
   ApiUser,
 } from "@/lib/api-types"
 import {
+  ClientFile,
   formatDateTime,
   type Client,
   type MaterialPurchase,
@@ -78,19 +80,41 @@ export function supplierToCreateApi(payload: Omit<Supplier, "id">) {
 }
 
 export function productionFileFromApi(f: ApiProductionFile): ProductionFile {
-  return { id: f.ID, nome: f.NOME, formato: f.FORMATO }
+  return { id: f.ID, nome: f.NOME, formato: f.FORMATO, itemId: f.ITEM_ID }
 }
 
-export function productionFileToApi(f: ProductionFile) {
+export function clientFileFromApi(f: ApiClientFile): ClientFile {
+  return { id: f.ID, clienteId: f.CLIENTE_ID, nome: f.NOME, formato: f.FORMATO }
+}
+
+export function clientFileToCreateApi(f: { nome: string; formato: string }) {
   return { NOME: f.nome, FORMATO: f.formato }
 }
 
+export function productionFileToApi(f: ProductionFile) {
+  return { 
+    NOME: f.nome, 
+    FORMATO: f.formato, 
+    ...(f.itemId ? { ITEM_ID: f.itemId }: {}),
+  }
+}
+
 export function orderItemFromApi(i: ApiOrderItem): OrderItem {
-  return { descricao: i.DESCRICAO, quantidade: i.QUANTIDADE, unidade: i.UNIDADE }
+  return { 
+    id: i.ID,
+    descricao: i.DESCRICAO, 
+    quantidade: i.QUANTIDADE, 
+    unidade: i.UNIDADE 
+  }
 }
 
 export function orderItemToApi(i: OrderItem) {
-  return { DESCRICAO: i.descricao, QUANTIDADE: i.quantidade, UNIDADE: i.unidade }
+  return {
+    ...(i.id ? { ID: i.id }: {}), 
+    DESCRICAO: i.descricao, 
+    QUANTIDADE: i.quantidade, 
+    UNIDADE: i.unidade 
+  }
 }
 
 export function allocationFromApi(a: ApiStageAllocation): StageAllocation {

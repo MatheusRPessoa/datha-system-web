@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,7 +26,7 @@ import { ApiError } from "@/lib/api"
 import { priorityLabels, FILE_FORMATS } from "@/lib/data"
 
 export function NovoPedidoDialog() {
-  const { clients, users, addOrder } = useStore()
+  const { clients, users, addOrder, clientFiles, loadClientFiles } = useStore()
   const [open, setOpen] = useState(false)
   const [numeroPedido, setNumeroPedido] = useState("")
   const [clienteId, setClienteId] = useState("")
@@ -34,14 +34,21 @@ export function NovoPedidoDialog() {
   const [prioridade, setPrioridade] = useState<"baixa" | "media" | "alta">("media")
   const [prazo, setPrazo] = useState("")
   const [valor, setValor] = useState("")
-  const [item, setItem] = useState("")
-  const [qtd, setQtd] = useState("")
+  const [itens, setItens] = useState<{ descricao: string; quantidade: string; unidade: string }[]>([
+    { descricao: "", quantidade: "1", unidade: "un" },
+  ])
   const [observacoes, setObservacoes] = useState("")
-  const [arquivos, setArquivos] = useState<{ nome: string; formato: string }[]>([])
+  const [arquivos, setArquivos] = useState<{ nome: string; formato: string; itemIndex?: number }[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const canSubmit = numeroPedido && clienteId && responsavel && item
+  const canSubmit = numeroPedido && clienteId && responsavel && itens.some((i) => i.descricao.trim())
+
+  useEffect(() => {
+    if (clienteId) loadClientFiles(clienteId)
+  }, [clienteId, loadClientFiles])
+
+  const arquivosDoCliente = clientFiles[clienteId] ?? []
 
   function reset() {
     setNumeroPedido("")
@@ -50,8 +57,7 @@ export function NovoPedidoDialog() {
     setPrioridade("media")
     setPrazo("")
     setValor("")
-    setItem("")
-    setQtd("")
+    setItens([{ descricao: "", quantidade: "1", unidade: "un" }])
     setObservacoes("")
     setArquivos([])
     setError(null)
@@ -61,12 +67,29 @@ export function NovoPedidoDialog() {
     setArquivos((prev) => [...prev, { nome: "", formato: "" }])
   }
 
-  function updateArquivo(index: number, field: "nome" | "formato", value: string) {
-    setArquivos((prev) => prev.map((a, i) => (i === index ? { ...a, [field]: value } : a)))
+  function updateArquivo(index: number, field: "nome" | "formato" | "itemIndex", value: string) {
+    setArquivos((prev) =>
+      prev.map((a, i) =>
+        i === index ? { ...a, [field]: field === "itemIndex" ? (value === "" ? undefined : Number(value)) : value } : a,
+      ),
+    )
   }
 
   function removeArquivo(index: number) {
     setArquivos((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function addItem() {
+    setItens((prev) => [...prev, { descricao: "", quantidade: "1", unidade: "un" }])
+  }
+  
+  function updateItem(index: number, field: "descricao" | "quantidade" | "unidade", value: string) {
+    const sanitized = field === "quantidade" ? value.replace(/-/g, "") : value
+    setItens((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: sanitized } : it)))
+  }
+
+  function removeItem(index: number) {
+    setItens((prev) => prev.filter((_, i) => i !== index))
   }
 
   async function handleSubmit() {
@@ -78,7 +101,7 @@ export function NovoPedidoDialog() {
     try {
       await addOrder({
         numero,
-        titulo: item,
+        titulo: itens[0]?.descricao ?? "",
         clienteId,
         cliente: cliente?.nome ?? "",
         stage: "atendimento",
@@ -87,13 +110,9 @@ export function NovoPedidoDialog() {
         prazo: prazo || new Date().toISOString().slice(0, 10),
         valor: Number(valor) || 0,
         observacoes: observacoes || undefined,
-        itens: [
-          {
-            descricao: item,
-            quantidade: Number(qtd) || 1,
-            unidade: "un",
-          },
-        ],
+        itens: itens
+          .filter((i) => i.descricao.trim())
+          .map((i) => ({ descricao: i.descricao, quantidade: Number(i.quantidade) || 1, unidade: i.unidade || "un"})),
         arquivosProducao: arquivos.filter((a) => a.nome.trim()),
         statusCompraMaterial: "pendente",
         compraMaterial: null,
@@ -208,19 +227,39 @@ export function NovoPedidoDialog() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2 grid gap-2">
-              <Label htmlFor="item">Produto</Label>
-              <Input
-                id="item"
-                value={item}
-                onChange={(e) => setItem(e.target.value)}
-                placeholder="Ex.: Camisa 100% Algodão - Personalização frente | #229"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="qtd">Qtd.</Label>
-              <Input id="qtd" type="number" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="0" />
+          <div className="grid gap-2">
+            <Label htmlFor="item">Produto</Label>
+            <div className="flex flex-col gap-2">
+              {itens.map((it, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input
+                    value={it.descricao}
+                    onChange={(e) => updateItem(i, "descricao", e.target.value)}
+                    placeholder="Ex.: Camisa 100% Algodão - Personalização frente"
+                    className="flex-1"
+                  />
+                  <Input
+                    type="number"
+                    min="1"
+                    value={it.quantidade}
+                    onChange={(e) => updateItem(i, "quantidade", e.target.value)}
+                    placeholder="Qtd."
+                    className="w-20 text-right"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon-sm" 
+                    onClick={() => removeItem(i)} 
+                    aria-label="Remover produto"
+                  >
+                    <X />
+                  </Button>
+                </div>
+              ))}
+              <button type="button" onClick={addItem} className="self-start text-xs font-medium text-primary hover:underline">
+                + Adicionar produto
+              </button>
             </div>
           </div>
 
@@ -230,6 +269,20 @@ export function NovoPedidoDialog() {
               Nome e formato dos arquivos enviados pelo cliente, salvos na pasta de ajustes, para quem for montar
               localizar e preparar a arte.
             </p>
+            {arquivosDoCliente.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {arquivosDoCliente.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setArquivos((prev) => [...prev, { nome: f.nome, formato: f.formato}])}
+                    className="rounded-full border border-border px-3 py-1 text-xs hover:bg-secondary"
+                  >
+                    + {f.nome} ({f.formato})
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               {arquivos.map((a, i) => (
                 <div key={i} className="flex gap-2">
@@ -239,6 +292,24 @@ export function NovoPedidoDialog() {
                     placeholder="Nome do arquivo (ex.: logo-cliente.ai)"
                     className="flex-1"
                   />
+                  <Select
+                    value={a.itemIndex !== undefined ? String(a.itemIndex) : ""}
+                    onValueChange={(v) => updateArquivo(i, "itemIndex", v ?? "")}
+                    items={Object.fromEntries(
+                      itens.map((it, idx) => [String(idx), it.descricao || `Item ${idx + 1}`]),
+                    )}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Geral" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {itens.map((it, idx) => (
+                        <SelectItem key={idx} value={String(idx)}>
+                          {it.descricao || `Item ${idx + 1}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Select
                     value={a.formato}
                     onValueChange={(v) => updateArquivo(i, "formato", v ?? "")}

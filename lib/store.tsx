@@ -3,6 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import { apiFetch } from "@/lib/api"
 import {
+  clientFileFromApi,
+  clientFileToCreateApi,
   clientFromApi,
   clientToCreateApi,
   orderFromApi,
@@ -14,10 +16,12 @@ import {
   userFromApi,
 } from "@/lib/adapters"
 import { useAuth } from "@/lib/auth"
-import type { ApiClient, ApiOrder, ApiSupplier, ApiUser } from "@/lib/api-types"
-import type { Client, MaterialStatus, Order, StageId, Supplier, User } from "@/lib/data"
+import type { ApiClient, ApiClientFile, ApiOrder, ApiSupplier, ApiUser } from "@/lib/api-types"
+import type { Client, ClientFile, MaterialStatus, Order, ProductionFile, StageId, Supplier, User } from "@/lib/data"
 
-type OrderPayload = Omit<Order, "id" | "logs" | "criadoEm" | "alocacoes">
+type OrderPayload = Omit<Order, "id" | "logs" | "criadoEm" | "alocacoes"> & {
+  arquivosProducao: (ProductionFile & { itemIndex?: number })[]
+}
 
 type StoreContextValue = {
   orders: Order[]
@@ -26,6 +30,7 @@ type StoreContextValue = {
   users: User[]
   loading: boolean
   error: string | null
+  clientFiles: Record<string, ClientFile[]>
   moveOrder: (orderId: string, stage: StageId) => Promise<void>
   alocarEtapa: (orderId: string, stage: StageId) => Promise<void>
   finalizarEtapa: (orderId: string, stage: StageId) => Promise<void>
@@ -40,6 +45,9 @@ type StoreContextValue = {
   refreshOrder: (orderId: string) => Promise<void>
   addClient: (client: Omit<Client, "id">) => Promise<void>
   addSupplier: (supplier: Omit<Supplier, "id">) => Promise<void>
+  loadClientFiles: (clientId: string) => Promise<void>
+  addClientFile: (clientId: string, file: { nome: string; formato: string }) => Promise<void>
+  removeClientFile: (clientId: string, fileId: string) => Promise<void>
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null)
@@ -48,6 +56,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
   const [orders, setOrders] = useState<Order[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [clientFiles, setClientFiles] = useState<Record<string, ClientFile[]>>({})
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -144,9 +153,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     for (const arquivo of order.arquivosProducao) {
       if (!arquivo.nome.trim()) continue
+      const itemId = 
+        arquivo.itemIndex !== undefined ? created.ITENS?.[arquivo.itemIndex]?.ID: arquivo.itemId
       await apiFetch(`/orders/${created.ID}/arquivos`, {
         method: "POST",
-        body: JSON.stringify(productionFileToApi(arquivo)),
+        body: JSON.stringify(productionFileToApi({...arquivo, itemId})),
       })
     }
 
@@ -216,6 +227,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setClients((prev) => [...prev, clientFromApi(created)])
   }, [])
 
+  const loadClientFiles = useCallback(async (clientId: string) => {
+    const res = await apiFetch<ApiClientFile[]>(`/clients/${clientId}/files`)
+    setClientFiles((prev) => ({ ...prev, [clientId]: res.map(clientFileFromApi) }))
+  }, [])
+
+  const addClientFile = useCallback(
+    async (clientId: string, file: { nome: string; formato: string }) => {
+      const created = await apiFetch<ApiClientFile>(`/clients/${clientId}/files`, {
+        method: "POST",
+        body: JSON.stringify(clientFileToCreateApi(file)),
+      })
+      setClientFiles((prev) => ({
+        ...prev,
+        [clientId]: [clientFileFromApi(created), ...(prev[clientId] ?? [])],
+      }))
+    },
+    []
+  )
+
+  const removeClientFile = useCallback(async (clienteId: string, fileId: string) => {
+    await apiFetch(`/clients/files/${fileId}`, { method: "DELETE" })
+    setClientFiles((prev) => ({
+      ...prev,
+      [clienteId]: (prev[clienteId] ?? []).filter((f) => f.id !== fileId),
+    }))
+  }, [])
+
   const addSupplier = useCallback(async (supplier: Omit<Supplier, "id">) => {
     const created = await apiFetch<ApiSupplier>("/suppliers", {
       method: "POST",
@@ -242,6 +280,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       refreshOrder,
       addClient,
       addSupplier,
+      clientFiles,
+      loadClientFiles,
+      addClientFile,
+      removeClientFile,
     }),
     [
       orders,
@@ -260,6 +302,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       refreshOrder,
       addClient,
       addSupplier,
+      clientFiles,
+      loadClientFiles,
+      addClientFile,
+      removeClientFile,
     ],
   )
 

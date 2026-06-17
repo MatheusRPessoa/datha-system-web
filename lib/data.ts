@@ -56,6 +56,7 @@ export type ProductionFile = {
   id?: string
   nome: string
   formato: string
+  itemId?: string | null
 }
 
 export type Client = {
@@ -65,6 +66,13 @@ export type Client = {
   email: string
   telefone: string
   pasta: string
+}
+
+export type ClientFile = {
+  id: string
+  clienteId: string
+  nome: string
+  formato: string
 }
 
 export type Supplier = {
@@ -78,6 +86,7 @@ export type Supplier = {
 }
 
 export type OrderItem = {
+  id?: string
   descricao: string
   quantidade: number
   unidade: string
