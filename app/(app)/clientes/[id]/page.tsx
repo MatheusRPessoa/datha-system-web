@@ -1,10 +1,12 @@
 "use client"
 
-import { use } from "react"
+import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
   ArrowLeft,
+  Check,
+  Copy,
   FolderOpen,
   Mail,
   Phone,
@@ -21,9 +23,37 @@ export default function ClienteDetalhePage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
-  const { clients, orders } = useStore()
+  const { clients, orders, loading } = useStore()
   const cliente = clients.find((c) => c.id === id)
-  if (!cliente) return notFound()
+  const { clientFiles, loadClientFiles, addClientFile, removeClientFile } = useStore()
+  const [novoNome, setNovoNome] = useState("")
+  const [novoFormato, setNovoFormato] = useState("")
+  const [copiado, setcopiado] = useState(false)
+
+  useEffect(() => {
+    if (cliente) loadClientFiles(cliente.id)
+  }, [cliente?.id, loadClientFiles])
+
+  const arquivosCliente = clientFiles[id] ?? []
+
+  async function handleAddArquivo() {
+    if (!novoNome.trim() || !novoFormato) return
+    await addClientFile(id, { nome: novoNome, formato: novoFormato })
+    setNovoNome("")
+    setNovoFormato("")
+  }
+
+  async function handleCopiarPasta() {
+    if (!cliente) return
+    await navigator.clipboard.writeText(cliente.pasta)
+    setcopiado(true)
+    setTimeout(() => setcopiado(false), 1500)
+  }
+
+  if (!cliente) {
+    if (loading) return null
+    return notFound()
+  }
 
   const pedidos = orders.filter((o) => o.clienteId === cliente.id)
   const arquivosProducao = pedidos.flatMap((o) =>
@@ -69,7 +99,15 @@ export default function ClienteDetalhePage({
             </span>
             <span className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2">
               <FolderOpen className="h-4 w-4 shrink-0" />
-              <span className="truncate font-mono text-xs">{cliente.pasta}</span>
+              <span className="truncate font-mono text-xs flex-1">{cliente.pasta}</span>
+              <button
+                type="button"
+                onClick={handleCopiarPasta}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label="Copiar caminho da pasta"
+              >
+                {copiado ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
             </span>
           </CardContent>
         </Card>
